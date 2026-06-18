@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"os"
 	"runtime"
+	"strconv"
 	"sync/atomic"
 	"time"
 )
@@ -54,6 +55,35 @@ func statusHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(resp)
 }
 
+func heavyHandler(w http.ResponseWriter, r *http.Request) {
+	start := time.Now()
+
+	loadStr := r.URL.Query().Get("load")
+	load, err := strconv.Atoi(loadStr)
+	if err != nil || load <= 0 {
+		load = 10000000
+	}
+
+	var result uint64
+
+	for i := 0; i < load; i++ {
+		result += uint64(i * i)
+	}
+
+	var mem runtime.MemStats
+	runtime.ReadMemStats(&mem)
+
+	resp := map[string]interface{}{
+		"servedBy":      hostname(),
+		"durationMs":    time.Since(start).Milliseconds(),
+		"memoryUsageMB": float64(mem.HeapAlloc) / 1024 / 1024,
+		"result":        result,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resp)
+}
+
 func metricsHandler(w http.ResponseWriter, r *http.Request) {
 	var mem runtime.MemStats
 	runtime.ReadMemStats(&mem)
@@ -72,6 +102,6 @@ func metricsHandler(w http.ResponseWriter, r *http.Request) {
 func main() {
 	http.HandleFunc("/api/status", countRequest(statusHandler))
 	http.HandleFunc("/api/metrics", countRequest(metricsHandler))
-
+	http.HandleFunc("/api/heavy", countRequest(heavyHandler))
 	http.ListenAndServe(":3000", nil)
 }
